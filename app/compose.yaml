@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "${APP_PORT:-5000}:5000"
+    environment:
+      SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY in .env before starting the app}"
+      MEDGEMMA_API_URL: "${MEDGEMMA_API_URL:-}"
+      MEDGEMMA_API_KEY: "${MEDGEMMA_API_KEY:-}"
+      MEDGEMMA_API_TIMEOUT: "${MEDGEMMA_API_TIMEOUT:-600}"
+      ASSESSMENTS_DB_PATH: /app/data/assessments.db
+      GUNICORN_WORKERS: "${GUNICORN_WORKERS:-1}"
+      GUNICORN_THREADS: "${GUNICORN_THREADS:-4}"
+      GUNICORN_TIMEOUT: "${GUNICORN_TIMEOUT:-}"
+    volumes:
+      - uploads:/app/static/uploads
+      - inference_results:/app/inference_results
+      - app_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  uploads:
+  inference_results:
+  app_data:

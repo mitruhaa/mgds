@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+.env.*
+.agents
+.codex
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+tests
+inference_results
+static/uploads/*
+!static/uploads/.gitkeep
+assessments.db
+audit_ledger.txt

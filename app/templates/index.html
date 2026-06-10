@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MGDS Control Room</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">MGDS</span>
+        <div>
+          <p class="eyebrow">Control Room</p>
+          <h1>Class IIa medical device. Only for qualified clinician usage.</h1>
+        </div>
+      </div>
+
+      <section class="panel">
+        <h2>Device Identity</h2>
+        <dl class="identity-list">
+          <div>
+            <dt>Type</dt>
+            <dd>Software as a Medical Device (SaMD)</dd>
+          </div>
+          <div>
+            <dt>Classification</dt>
+            <dd>Class IIa (EU MDR Rule 11)</dd>
+          </div>
+          <div>
+            <dt>Engine</dt>
+            <dd>MedGemma 1.5 4B-IT [LoRA R-32]</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Pipeline Configuration</h2>
+        <form method="post" class="stacked-form">
+          <div class="radio-stack">
+            {% for mode in pipeline_modes %}
+              <label class="radio-card">
+                <input type="radio" name="app_mode" value="{{ mode }}" {% if app_mode == mode %}checked{% endif %}>
+                <span>{{ mode }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="qc_score" value="{{ qc_score }}">
+          <button class="button secondary" type="submit" name="action" value="save_settings">Apply Source</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Connection Status</h2>
+        {% if app_mode == live_mode %}
+          {% if tunnel_up %}
+            <div class="status-pill success">Pipeline link active</div>
+            <p class="muted">Colab ngrok tunnel online.</p>
+          {% else %}
+            <div class="status-pill danger">Pipeline link offline</div>
+            <p class="muted">
+              {% if api_configured %}Check the Colab runtime and endpoint.{% else %}Set MEDGEMMA_API_URL.{% endif %}
+            </p>
+          {% endif %}
+        {% else %}
+          <div class="status-pill warning">Simulation active</div>
+          <p class="muted">Sandbox interface.</p>
+        {% endif %}
+      </section>
+    </aside>
+
+    <main class="main">
+      <header class="page-header">
+        <p class="eyebrow">MedGemma Ophthalmic Triage Pipeline</p>
+        <h1>Glaucoma Diagnostic System Control Room</h1>
+        <p>Advanced regulation compliance terminal</p>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% if app_mode == simulation_mode %}
+        <section class="system-banner warning">
+          <strong>System Status:</strong>
+          Operating in Simulation Sandbox Mode. Diagnostic outputs are mathematically modeled for evaluation runs.
+        </section>
+      {% elif tunnel_up %}
+        <section class="system-banner success">
+          <strong>System Status:</strong>
+          Pipeline successfully established. Localhost is connected to the MedGemma Colab runtime.
+        </section>
+      {% else %}
+        <section class="system-banner danger">
+          <strong>System Status:</strong>
+          {% if api_configured %}
+            Connection failure. Localhost cannot communicate with the Colab model server via {{ colab_api_url }}.
+          {% else %}
+            Colab API URL is not configured. Set MEDGEMMA_API_URL to the ngrok public URL printed by the notebook.
+          {% endif %}
+        </section>
+      {% endif %}
+
+      <div class="workspace-grid">
+        <section class="workspace-column">
+          <div class="section-heading">
+            <span>Step 1</span>
+            <h2>Patient Data Entry &amp; Integrity Gate</h2>
+          </div>
+
+          <form method="post" enctype="multipart/form-data" class="panel case-form">
+            <label class="field-label" for="fundus_image">Upload Color Fundus Photograph</label>
+            <input id="fundus_image" class="file-input" type="file" name="fundus_image" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
+
+            <label class="field-label range-label" for="qc_score">
+              <span>Retinal Image Quality Assessment</span>
+              <strong id="qcValue">{{ qc_score }}</strong>
+            </label>
+            <input id="qc_score" class="quality-range" type="range" name="qc_score" min="1" max="10" step="1" value="{{ qc_score }}">
+            <input type="hidden" name="app_mode" value="{{ app_mode }}">
+
+            <div class="button-row">
+              <button class="button primary" type="submit" name="action" value="save_case">Save Case</button>
+              <button class="button ghost" type="submit" name="action" value="clear_case">Reset Case</button>
+            </div>
+          </form>
+
+          {% if has_image %}
+            <figure class="image-panel">
+              <img src="{{ uploaded_image_url }}" alt="Uploaded retinal fundus photograph">
+              <figcaption>Target Zone: Optic Disc Area{% if original_filename %} | {{ original_filename }}{% endif %}</figcaption>
+            </figure>
+
+            <section class="panel">
+              <h3>Data Quality Check</h3>
+              {% if qc_blocked %}
+                <div class="clinical-alert danger">
+                  Automated run constrained: retinal data quality drops below analytical bounds (QC &lt; {{ qc_score }}). Execution frozen.
+                </div>
+              {% else %}
+                <div class="clinical-alert success">
+                  Integrity match: retinal resolution conforms to specification thresholds (QC &gt;= {{ qc_score }}). Ready for inference.
+                </div>
+              {% endif %}
+            </section>
+          {% endif %}
+        </section>
+
+        <section class="workspace-column">
+          {% if has_image and not qc_blocked %}
+            <div class="section-heading">
+              <span>Step 2</span>
+              <h2>Algorithmic Screening Diagnostic Triage</h2>
+            </div>
+
+            <form method="post" class="panel inference-panel">
+              <input type="hidden" name="app_mode" value="{{ app_mode }}">
+              <input type="hidden" name="qc_score" value="{{ qc_score }}">
+              <button class="button primary wide loading-button" type="submit" name="action" value="run_inference" {% if not is_executable or qc_blocked %}disabled{% endif %}>
+                Trigger MedGemma Deep Learning Pipeline
+              </button>
+              {% if not is_executable %}
+                <p class="muted">Live inference is disabled until the pipeline link is active.</p>
+              {% elif qc_blocked %}
+                <p class="muted">Inference is disabled while QC remains below the execution threshold.</p>
+              {% endif %}
+            </form>
+
+            {% if probability is not none %}
+              <section class="panel metrics-panel">
+                <div class="metric-grid">
+                  <div class="metric">
+                    <span>Glaucoma Yes Probability</span>
+                    <strong>{{ risk_percent }}%</strong>
+                  </div>
+                  <div class="metric">
+                    <span>Model Prediction</span>
+                    <strong>{{ prediction|upper if prediction else classification }}</strong>
+                  </div>
+                  <div class="metric">
+                    <span>Predicted-Class Confidence</span>
+                    <strong>{{ confidence_percent ~ "%" if confidence_percent else "N/A" }}</strong>
+                  </div>
+                  <div class="metric">
+                    <span>Non-Glaucoma Probability</span>
+                    <strong>{{ no_probability_percent ~ "%" if no_probability_percent else "N/A" }}</strong>
+                  </div>
+                  <div class="metric metric-wide">
+                    <span>Classification Priority</span>
+                    <strong>{{ classification }}</strong>
+                  </div>
+                </div>
+                <div class="progress-shell" aria-label="Glaucoma yes probability">
+                  <div class="progress-bar" style="width: {{ risk_percent }}%"></div>
+                </div>
+              </section>
+
+              {% if probability >= 0.5 %}
+                <section class="clinical-alert danger large">
+                  <h3>Critical Finding: Suspected Glaucomatous Optic Neuropathy (GON+)</h3>
+                  <p>The model's glaucoma probability crossed the routing threshold. Review the image, explanation, and XAI output before acting.</p>
+                </section>
+              {% else %}
+                <section class="clinical-alert success large">
+                  <h3>Stable Architecture: Low Risk Structural Thresholds (GON-)</h3>
+                </section>
+              {% endif %}
+
+              <div class="section-heading separated">
+                <span>Step 3</span>
+                <h2>Explainable AI (XAI) Visual Insights</h2>
+              </div>
+              <section class="panel xai-panel">
+                <h3>Feature Importance Localization Map</h3>
+                {% if xai_heatmap_url %}
+                  <img class="xai-heatmap" src="{{ xai_heatmap_url }}" alt="MedGemma occlusion sensitivity heatmap">
+                {% else %}
+                  <div class="heatmap-placeholder">
+                    <span>No image-specific heatmap available</span>
+                  </div>
+                {% endif %}
+                {% if xai_type %}
+                  <p class="xai-meta">
+                    Method: {{ xai_type|replace("_", " ") }}
+                    {% if xai_grid_size %}| Grid: {{ xai_grid_size }} x {{ xai_grid_size }}{% endif %}
+                  </p>
+                {% endif %}
+                {% if xai_note %}<p class="muted">{{ xai_note }}</p>{% endif %}
+
+                <h3 class="xai-explanation-heading">Possible Visual Explanation</h3>
+                <div class="model-explanation">{{ explanation }}</div>
+
+                {% if model_reasoning %}
+                  <h3 class="xai-reasoning-heading">Model Reasoning Trace</h3>
+                  <div class="model-reasoning">{{ model_reasoning }}</div>
+                  <p class="muted">Raw model reasoning enclosed by &lt;unused94&gt; markers. Treat it as unverified research output.</p>
+                {% endif %}
+              </section>
+
+              <div class="section-heading separated">
+                <span>Step 4</span>
+                <h2>Human-in-Command Oversight Panel</h2>
+              </div>
+              <section class="panel oversight-panel">
+                <p class="caption">EU AI Act Article 14 Audit Trail Management Verification Loop</p>
+                <div class="oversight-grid">
+                  <form method="post" class="oversight-action">
+                    <input type="hidden" name="app_mode" value="{{ app_mode }}">
+                    <input type="hidden" name="qc_score" value="{{ qc_score }}">
+                    <button class="button success wide" type="submit" name="action" value="confirm_route">Confirm AI Verdict &amp; Route</button>
+                    {% if route_confirmed %}
+                      <div class="clinical-alert success compact">Fast-track routing committed.</div>
+                    {% endif %}
+                  </form>
+
+                  <form method="post" class="oversight-action">
+                    <input type="hidden" name="app_mode" value="{{ app_mode }}">
+                    <input type="hidden" name="qc_score" value="{{ qc_score }}">
+                    <label class="field-label" for="audit_reason">Override Flag (False Alarm)</label>
+                    <textarea id="audit_reason" name="audit_reason" rows="5" placeholder="Mandatory audit description"></textarea>
+                    <button class="button danger wide" type="submit" name="action" value="commit_override">Commit Override Signature to Secure Device Ledger</button>
+                  </form>
+                </div>
+              </section>
+            {% endif %}
+          {% elif qc_blocked %}
+            <section class="empty-state">
+              <div>
+                <span>Execution Frozen</span>
+                <h2>Retinal image quality is below the automated diagnostic threshold.</h2>
+              </div>
+            </section>
+          {% else %}
+            <section class="empty-state">
+              <div>
+                <span>Control Surface Offline</span>
+                <h2>Submit an image under Step 1 to boot the diagnostic triage processor lanes.</h2>
+              </div>
+            </section>
+          {% endif %}
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const qcSlider = document.querySelector("#qc_score");
+    const qcValue = document.querySelector("#qcValue");
+    if (qcSlider && qcValue) {
+      qcSlider.addEventListener("input", () => {
+        qcValue.textContent = qcSlider.value;
+      });
+    }
+
+    document.querySelectorAll(".loading-button").forEach((button) => {
+      button.closest("form").addEventListener("submit", () => {
+        if (!button.disabled) {
+          button.textContent = "Analyzing structural nerve data...";
+          button.classList.add("is-loading");
+        }
+      });
+    });
+  </script>
+</body>
+</html>

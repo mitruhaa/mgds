@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+
+audit_ledger.txt
+assessments.db
+inference_results/
+static/uploads/*
+!static/uploads/.gitkeep
